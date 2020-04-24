@@ -9,15 +9,22 @@ chown -R abc:abc /config/redis
 [ -d /home/app/unms/data ] && rm -rf /home/app/unms/data
 ln -s /config/unms /home/app/unms/data
 
+# UCRM
+[ -e /config/unms/ucrm ] || mv /data /config/unms/ucrm
+[ -d /data ] && rm -rf /data
+ln -s /config/unms/ucrm /data
+
 # Nginx Firmware
 mkdir -p /home/app/unms/public/firmwares /www
 ln -s /home/app/unms/public/firmwares /www/firmwares
 
 # Certs
 [ -e /config/cert ] || mkdir -p /config/cert
+[ -e /config/usercert ] || mkdir -p /config/usercert
 ln -s /config/cert /cert
+ln -s /config/usercert /usercert
 
-# UNMS Logs
+# UNMS / UCRM Logs
 [ -e /config/unms/logs ] || mkdir -p /config/unms/logs
 chown -R nobody:nogroup /config/unms/logs
 
@@ -30,3 +37,7 @@ chown -R nobody:nogroup /config/logs
 
 # Fix hosts file
 echo "127.0.0.1 unms" >> /etc/hosts
+
+# Fix logrotate permission
+chmod 644 /etc/logrotate.d/unms
+chmod 644 /etc/logrotate.d/ucrm
