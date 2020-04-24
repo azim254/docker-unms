@@ -1,0 +1,74 @@
+#!/usr/bin/with-contenv sh
+
+export TERM=xterm
+export POSTGRES_USER=ucrm
+export POSTGRES_DB=unms
+export POSTGRES_PASSWORD=ucrm
+export POSTGRES_HOST=127.0.0.1
+export POSTGRES_HOST_BOUNCER=127.0.0.1
+export POSTGRES_PORT=5432
+export POSTGRES_PORT_BOUNCER=5432
+export POSTGRES_SCHEMA=ucrm
+export UNMS_POSTGRES_SCHEMA=unms
+export MAILER_HOST=127.0.0.1
+export MAILER_USERNAME=null
+export MAILER_PASSWORD=null
+export MAILER_AUTH_MODE=null
+export MAILER_ENCRYPTION=null
+export MAILER_PORT=null
+export MAILER_TRANSPORT=smtp
+export RABBITMQ_HOST=127.0.0.1
+export RABBITMQ_PORT=5672
+export RABBITMQ_USER=guest
+export RABBITMQ_PASSWORD=guest
+export NETFLOW_HOST=127.0.0.1
+export NETFLOW_PORT=2055
+export SECRET=changeThisSecretKey
+export SYMFONY_ENV=prod
+export FORCE_HTTPS=1
+export TRUSTED_PROXIES=all
+export UCRM_USERNAME=null
+export UCRM_PASSWORD=null
+export UCRM_DISK_USAGE_DIRECTORY=/
+export UAS_INSTALLATION=
+export NGINX_VERSION=1.14.2
+export PGBOUNCER_VERSION=1.10.0
+export UNMS_HOST=127.0.0.1
+export UNMS_PORT=8081
+export UNMS_TOKEN=ucrm
+export UNMS_VERSION=1.1.6
+export SUSPEND_PORT=9082
+export CLOUD=0
+export CLOUD_SMTP_PORT=null
+export CLOUD_SMTP_USERNAME=null
+export CLOUD_SMTP_PASSWORD=null
+export CLOUD_SMTP_HOSTNAME=null
+export CLOUD_SMTP_TLS_ALLOW_UNAUTHORIZED=null
+export CLOUD_SMTP_SECURITY_MODE=null
+export CLOUD_MAPS_API_KEY=null
+export NODE_ENV=production
+
+# wait for postgres to come up
+until pg_isready; do
+  echo "Waiting for postgres to come up..."
+  sleep 1
+done
+
+# wait for unms to create user
+until id -u unms; do
+  echo "Waiting for unms to create user..."
+  sleep 1
+done
+
+
+if [ "$QUIET_MODE" = "1" ]; then
+  echo "Starting UCRM in quiet mode..."
+  cd /usr/src/ucrm
+  s6-setuidgid root make server_with_migrate >> /config/unms/logs/ucrm.log 2>&1
+
+  printf "\n\nUCRM exited, last 100 lines of log:\n\n"
+  tail -n 100 /config/unms/logs/ucrm.log
+else
+  cd /usr/src/ucrm
+  s6-setuidgid root make server_with_migrate 2>&1  | tee -a /config/unms/logs/ucrm.log
+fi

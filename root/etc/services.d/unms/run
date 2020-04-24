@@ -4,16 +4,25 @@ export HOME=/home/app
 export HTTP_PORT=8081
 export WS_PORT=8082
 export WS_SHELL_PORT=8083
-export UNMS_RABBITMQ_HOST=localhost
+export UNMS_RABBITMQ_HOST=127.0.0.1
 export UNMS_RABBITMQ_PORT=5672
-export UNMS_REDISDB_HOST=localhost
+export UNMS_REDISDB_HOST=127.0.0.1
 export UNMS_REDISDB_PORT=6379
-export UNMS_PG_HOST=localhost
+export UNMS_PG_HOST=127.0.0.1
 export UNMS_PG_PORT=5432
-export UNMS_FLUENTD_HOST=localhost
+export UNMS_PG_USER=unms
+export UNMS_PG_PASSWORD=unms
+export UNMS_PG_SCHEMA=unms
+export UNMS_FLUENTD_HOST=127.0.0.1
 export UNMS_FLUENTD_PORT=8081
-export UNMS_NGINX_HOST=localhost
+export UNMS_NGINX_HOST=127.0.0.1
 export UNMS_NGINX_PORT=12345
+export UNMS_TOKEN=ucrm
+export UCRM_HOST=127.0.0.1
+export UCRM_PORT=9081
+export UCRM_PG_USER=ucrm
+export UCRM_PG_SCHEMA=ucrm
+export UCRM_PG_PASSWORD=ucrm
 export NODE_ENV=production
 
 # wait for postgres to come up
@@ -27,6 +36,64 @@ psql -U postgres -lqt | cut -d \| -f 1 | grep -qw $POSTGRES_DB
 if [ $? -ne 0 ]; then
   echo "Creating database..."
   createdb -U postgres -O postgres $POSTGRES_DB
+fi
+
+# Migrate database
+psql -U postgres -d $POSTGRES_DB -qt -c "SELECT schema_name FROM information_schema.schemata" | cut -d \| -f 1 | grep -qw $UNMS_PG_SCHEMA
+if [ $? -ne 0 ]; then
+  echo "Migrating database..."
+  # Create user unms
+  psql -U postgres -d $POSTGRES_DB -c "CREATE USER $UNMS_PG_USER SUPERUSER PASSWORD '$UNMS_PG_PASSWORD'"
+  psql -U postgres -d $POSTGRES_DB -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $UNMS_PG_USER"
+  # Create user ucrm
+  psql -U postgres -d $POSTGRES_DB -c "CREATE USER $UCRM_PG_USER SUPERUSER PASSWORD '$UCRM_PG_PASSWORD'"
+  psql -U postgres -d $POSTGRES_DB -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $UCRM_PG_USER"
+  # Rename schema public to unms
+  psql -U postgres -d $POSTGRES_DB -c "ALTER SCHEMA public RENAME TO $UNMS_PG_SCHEMA"
+  # Create new schemas
+  psql -U postgres -d $POSTGRES_DB -c "CREATE SCHEMA IF NOT EXISTS public"
+  psql -U postgres -d $POSTGRES_DB -c "CREATE SCHEMA IF NOT EXISTS $UCRM_PG_SCHEMA"
+  # Change search paths
+  psql -U postgres -d $POSTGRES_DB -c "ALTER USER $UNMS_PG_USER SET search_path = $UNMS_PG_SCHEMA,public"
+  psql -U postgres -d $POSTGRES_DB -c "ALTER USER $UCRM_PG_USER SET search_path = $UCRM_PG_SCHEMA,public"
+  # Change schema owners
+  psql -U postgres -d $POSTGRES_DB -c "ALTER SCHEMA $UNMS_PG_SCHEMA OWNER TO $UNMS_PG_USER"
+  psql -U postgres -d $POSTGRES_DB -c "ALTER SCHEMA $UCRM_PG_SCHEMA OWNER TO $UCRM_PG_USER"
+fi
+
+# Migrate extensions
+psql -U postgres -d $POSTGRES_DB -qt -c "\df" | cut -d \| -f 2 | grep -qw "uuid_generate_v4"
+if [ $? -ne 0 ]; then
+  echo "Migrating extensions..."
+  extensions="$(psql -U postgres -d $POSTGRES_DB -qt -c "SELECT extname FROM pg_extension WHERE extname != 'plpgsql'")"
+  for extension in ${extensions}; do
+    psql -U postgres -d $POSTGRES_DB -c "ALTER EXTENSION \"${extension}\" SET SCHEMA public"
+  done
+fi
+
+# Convert database to UTF8
+psql -U postgres -d $POSTGRES_DB -qt -c "SHOW SERVER_ENCODING" | cut -d \| -f 1 | grep -qw UTF8
+if [ $? -ne 0 ]; then
+  echo "Converting database to UTF8..."
+  pg_dump -U postgres --encoding utf8 $POSTGRES_DB -f /config/unms_utf8.sql
+  s6-svc -wd -d /var/run/s6/services/postgres/
+  killall -u postgres -w
+  cp -r /config/postgres /config/postgres_ascii
+  rm -rf /config/postgres/*
+  s6-setuidgid postgres initdb --locale=C.UTF-8
+  s6-svc -wu -u /var/run/s6/services/postgres/
+  until pg_isready; do
+    echo "Waiting for postgres to come up..."
+    sleep 1
+  done
+  createdb -U postgres -O postgres $POSTGRES_DB
+  psql -U postgres -d $POSTGRES_DB -c "CREATE USER $UNMS_PG_USER SUPERUSER PASSWORD '$UNMS_PG_PASSWORD'"
+  psql -U postgres -d $POSTGRES_DB -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $UNMS_PG_USER"
+  psql -U postgres -d $POSTGRES_DB -c "CREATE USER $UCRM_PG_USER SUPERUSER PASSWORD '$UCRM_PG_PASSWORD'"
+  psql -U postgres -d $POSTGRES_DB -c "GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $UCRM_PG_USER"
+  psql -U postgres -d $POSTGRES_DB -c "ALTER USER $UNMS_PG_USER SET search_path = $UNMS_PG_SCHEMA,public"
+  psql -U postgres -d $POSTGRES_DB -c "ALTER USER $UCRM_PG_USER SET search_path = $UCRM_PG_SCHEMA,public"
+  psql -U postgres -f /config/unms_utf8.sql -d unms
 fi
 
 if [ "$QUIET_MODE" = "1" ]; then

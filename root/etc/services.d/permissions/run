@@ -2,4 +2,6 @@
 
 sleep 20
 chown -R unms:unms /home/app/unms/public
+chown -R unms:unms /usr/src/ucrm/web
+chown -R unms:unms /usr/src/ucrm/app/cache
 sleep 40

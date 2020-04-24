@@ -1,0 +1,30 @@
+/data/log/ucrm/app/logs/*log {
+    rotate 14
+    daily
+    maxsize 10M
+    compress
+    missingok
+    notifempty
+    copytruncate
+    su unms unms
+    create 775 unms unms
+}
+
+/data/log/ucrm/nginx/*log /data/log/ucrm/php/*log /data/log/ucrm/letsencrypt/*log {
+    rotate 14
+    daily
+    maxsize 10M
+    compress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+    create 775 root root
+}
+
+/var/log/supervisor/*.log {
+    missingok
+    weekly
+    notifempty
+    nocompress
+}
